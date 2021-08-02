@@ -52,6 +52,7 @@ enum program_return_codes {
     RETURN_HOST_KEY_CHANGED,
     RETURN_INCORRECT_OTP,
     RETURN_OTP_COMMAND_ERROR,
+    RETURN_PW_COMMAND_ERROR,
 };
 
 // Some systems don't define posix_openpt
@@ -64,6 +65,7 @@ posix_openpt(int flags)
 #endif
 
 void run_otp_command();
+void run_pw_command();
 int runprogram( int argc, char *argv[] );
 void reliable_write( int fd, const void *data, size_t size );
 int handleoutput( int fd );
@@ -75,13 +77,13 @@ void write_pass( int fd );
 void write_otp( int fd );
 
 struct {
-    enum { PWT_STDIN, PWT_FILE, PWT_FD, PWT_PASS } pwtype;
+    enum { PWT_STDIN, PWT_FILE, PWT_FD, PWT_PASS, PWT_COMMAND } pwtype;
     union {
         const char *filename;
         int fd;
         const char *password;
     } pwsrc;
-
+    const char *pwcommand;
     const char *pwprompt;
     int verbose;
     char *orig_password;
@@ -105,6 +107,7 @@ static void show_help()
             "   -V            Print version information\n"
             "   -o OTP        One time password\n"
             "   -c command    executable file name printing one time password\n"
+            "   -C command    executable file name printing ssh password\n"
             "   -O OTP prompt Which string should sshpass search for the one time password prompt\n"
             "At most one of -f, -d, -p or -e should be used\n");
 }
@@ -132,7 +135,7 @@ static int parse_options( int argc, char *argv[] )
         optarg[i]='z'; \
     } while(0)
 
-    while( (opt=getopt(argc, argv, "+f:d:p:P:o:c:O:heVv"))!=-1 && error==-1 ) {
+    while( (opt=getopt(argc, argv, "+f:d:p:P:o:c:C:O:heVv"))!=-1 && error==-1 ) {
         switch( opt ) {
         case 'f':
             // Password should come from a file
@@ -210,6 +213,12 @@ static int parse_options( int argc, char *argv[] )
             args.otpcommand=strdup(optarg);
             HIDE_OPTARG;
             break;
+        case 'C':
+            VIRGIN_PWTYPE;
+            args.pwtype=PWT_COMMAND;
+            args.pwcommand=strdup(optarg);
+            HIDE_OPTARG;
+            break;
         case 'O':
             args.otprompt=optarg;
             break;
@@ -251,6 +260,10 @@ int main( int argc, char *argv[] )
 
     if( args.otptype == OTP_COMMAND ) {
         run_otp_command();
+    }
+
+    if( args.pwtype == PWT_COMMAND ) {
+        run_pw_command();
     }
 
     return runprogram( argc-opt_offset, argv+opt_offset );
@@ -583,6 +596,10 @@ void write_pass( int fd )
         reliable_write( fd, args.pwsrc.password, strlen( args.pwsrc.password ) );
         reliable_write( fd, "\n", 1 );
         break;
+    case PWT_COMMAND:
+        reliable_write( fd, args.pwsrc.password, strlen( args.pwsrc.password ) );
+        reliable_write( fd, "\n", 1 );
+        break;
     }
 }
 
@@ -682,3 +699,30 @@ void run_otp_command()
 
     pclose( fp );
 }
+
+void run_pw_command()
+{
+    if( args.verbose ) {
+        fprintf(stderr, "SSHPASS popen(%s)\n", args.pwcommand);
+    }
+
+    FILE *fp = popen( args.pwcommand, "r" );
+    if( fp == NULL ) {
+        if( args.verbose ) {
+            perror( args.pwcommand );
+        }
+        exit(RETURN_PW_COMMAND_ERROR);
+    }
+
+    char buf[256];
+    if( fgets( buf, sizeof(buf), fp ) != NULL ) {
+        char *p = strchr(buf, '\n');
+        if( p != NULL ) {
+            *p='\0';
+        }
+        args.pwsrc.password = strdup(buf);
+    }
+    pclose( fp );
+}
+
+
