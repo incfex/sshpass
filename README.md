@@ -2,6 +2,22 @@
 
 For ssh servers with 2FA, with a normal password and time-based one time password.
 
+## Build
+
+You might need installing autoconf and automake.
+
+```
+./bootstrap
+./configure
+make
+```
+
+Then you can move the generated `sshpass` binary to your `$PATH`
+
+```bash
+cp sshpass /usr/local/bin/
+```
+
 ## Usage
 ---
 ### MacOS
@@ -57,15 +73,6 @@ Added parameters:
 ```
 -O option's default is `Verification code:`.
 
-## Build
-
-```
-./bootstrap
-./configure
-make
-```
-
-You might need installing autoconf and automake.
 
 ## Fork from
 
